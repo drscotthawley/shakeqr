@@ -1,0 +1,14 @@
+project:
+  output-dir: _docs
+
+website:
+  title: "shakeqr"
+  site-url: "https://drscotthawley.github.io/shakeqr"
+  description: ""
+  repo-branch: main
+  repo-url: "https://github.com/drscotthawley/shakeqr"
+
+format-links:
+  - html
+  - format: commonmark
+    text: Markdown
