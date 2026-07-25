@@ -15,7 +15,20 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
 ]
-dependencies = []
+dependencies = [
+    "torch",
+    "numpy",
+    "pandas",
+    "requests",
+    "yfinance",
+    "tqdm",
+    "matplotlib",
+]
+
+[project.optional-dependencies]
+dev = [
+    "nbdev",
+]
 
 [project.urls]
 Repository = "https://github.com/drscotthawley/shakeqr"
