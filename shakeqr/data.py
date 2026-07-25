@@ -9,9 +9,9 @@ __all__ = ['DATA_DIR', 'DEVICE', 'ALGOS', 'PAIRINGS', 'get_device', 'get_nyse_da
            'build_corr', 'greedy_order', 'spectral_order', 'build_xcorr', 'corr_to_dist', 'build_dist',
            'greedy_edge_order', 'tour_length', 'two_opt', 'tsp_order', 'hrp_order', 'roughness', 'roughness_profile',
            'chain_trace', 'corr_stats', 'standardize', 'log_prices', 'show', 'show_corr', 'show_score_profile',
-           'sample_fit_eval', 'run_trial', 'run_benchmark', 'summarize_benchmark']
+           'rgb_image', 'show_rgb', 'sample_fit_eval', 'run_trial', 'run_benchmark', 'summarize_benchmark']
 
-# %% ../nbs/01_data.ipynb #212974c0
+# %% ../nbs/01_data.ipynb #81fa3c96
 import datetime as dt
 import io
 import os
@@ -25,7 +25,7 @@ from tqdm import tqdm
 
 DATA_DIR = "~/github/shakeqr"
 
-# %% ../nbs/01_data.ipynb #52bbbd68
+# %% ../nbs/01_data.ipynb #1e44bb67
 def get_device(prefer=None):
     """cuda -> mps (Apple Silicon) -> cpu, unless `prefer` overrides."""
     if prefer is not None:
@@ -39,7 +39,7 @@ def get_device(prefer=None):
 
 DEVICE = get_device()
 
-# %% ../nbs/01_data.ipynb #7980a6be
+# %% ../nbs/01_data.ipynb #a27b2b8d
 def _fetch_nyse_tickers():
     """Strict NYSE (Exchange == 'N'), excluding test issues, preferred-share
     series (the `$` symbols), and warrants/rights/units."""
@@ -54,7 +54,7 @@ def _fetch_nyse_tickers():
     df = df[~df["Security Name"].str.contains(junk, case=False, na=False)]
     return sorted(df["ACT Symbol"].str.strip().str.replace(".", "-", regex=False).tolist())
 
-# %% ../nbs/01_data.ipynb #bc279a65
+# %% ../nbs/01_data.ipynb #8e362dc5
 def get_nyse_data(cache_dir=DATA_DIR, years=4, chunk_size=100, force=False, device=DEVICE):
     """Daily open/close prices for NYSE common stocks plus the S&P 500 index
     prepended as channel 0. Returns `(opening, closing, tickers)` where the
@@ -106,7 +106,7 @@ def get_nyse_data(cache_dir=DATA_DIR, years=4, chunk_size=100, force=False, devi
     print(f"Saved {open_tensor.shape[0]} channels x {open_tensor.shape[1]} days -> {cache_dir}")
     return open_tensor.to(device), close_tensor.to(device), tickers
 
-# %% ../nbs/01_data.ipynb #b68bbbcc
+# %% ../nbs/01_data.ipynb #2068a27a
 def _ffill(X):
     """Forward-fill NaNs along dim=1."""
     C, T = X.shape
@@ -114,7 +114,7 @@ def _ffill(X):
     idx = torch.where(~torch.isnan(X), ar, torch.zeros_like(ar))
     return torch.gather(X, 1, torch.cummax(idx, dim=1).values)
 
-# %% ../nbs/01_data.ipynb #1697c777
+# %% ../nbs/01_data.ipynb #4e380441
 def fill_gaps(X):
     """Forward- then backward-fill NaNs along time. bfill == ffill reversed.
 
@@ -122,12 +122,12 @@ def fill_gaps(X):
     with its first real price -- a convenience, not real history."""
     return _ffill(_ffill(X).flip(1)).flip(1)
 
-# %% ../nbs/01_data.ipynb #ea78e151
+# %% ../nbs/01_data.ipynb #80708f41
 def to_returns(opening, closing):
     """`[C, T]` prices -> `[C, T]` intraday returns."""
     return (closing - opening) / opening
 
-# %% ../nbs/01_data.ipynb #4cedc707
+# %% ../nbs/01_data.ipynb #d3e096bf
 def prepare(opening, closing, tickers, min_mean_price=5.0, min_var=1e-12):
     """Fill gaps, drop penny stocks and zero-variance channels.
     Returns `(prices, returns, tickers)`, all mutually aligned. An `assert`
@@ -147,13 +147,13 @@ def prepare(opening, closing, tickers, min_mean_price=5.0, min_var=1e-12):
     assert len(tickers) == opening.shape[0] == returns.shape[0], "channel/ticker drift"
     return opening, returns, tickers
 
-# %% ../nbs/01_data.ipynb #ff0603a6
+# %% ../nbs/01_data.ipynb #63744346
 def build_corr(returns, use_abs=True):
     """`[C, T]` returns -> `[C, C]` Pearson correlation at zero lag."""
     C = torch.nan_to_num(torch.corrcoef(returns.to(torch.float32)), nan=0.0)
     return C.abs() if use_abs else C
 
-# %% ../nbs/01_data.ipynb #b3648c20
+# %% ../nbs/01_data.ipynb #51809546
 def greedy_order(C, start=0):
     """Anchored nearest-neighbour chain. Each step re-anchors on the channel
     just placed, so `start` seeds only the first hop.
@@ -174,7 +174,7 @@ def greedy_order(C, start=0):
         avail[cur] = False
     return torch.tensor(order, device=C.device)
 
-# %% ../nbs/01_data.ipynb #a393669d
+# %% ../nbs/01_data.ipynb #f82820f0
 def spectral_order(C, anchor=0, dtype=None):
     """Fiedler-vector seriation of the graph Laplacian L = D - C.
 
@@ -208,7 +208,7 @@ def spectral_order(C, anchor=0, dtype=None):
     order = order.flip(0) if pos > N // 2 else order
     return order.to(dev)
 
-# %% ../nbs/01_data.ipynb #cb506a16
+# %% ../nbs/01_data.ipynb #7b8b5d0d
 def build_xcorr(returns, max_lag=20, use_abs=True, device=None):
     """`[C, T]` returns -> `[C, C]` matrix of MAXIMUM cross-correlation-like
     score over shifts `tau` in `[-max_lag, max_lag]` (`build_corr` is the
@@ -252,14 +252,14 @@ def build_xcorr(returns, max_lag=20, use_abs=True, device=None):
 
     return best
 
-# %% ../nbs/01_data.ipynb #d5dcf8fc
+# %% ../nbs/01_data.ipynb #4c343372
 def corr_to_dist(C):
     """Generic correlation -> RMS-distance conversion (on whitened data,
     d^2 = 2(1-corr)) -- works for any [C,C] correlation-like matrix, whether
     from `build_corr` (lag 0) or `build_xcorr` (max over lags)."""
     return torch.sqrt((2 * (1 - C)).clamp(min=0))
 
-# %% ../nbs/01_data.ipynb #d2451eeb
+# %% ../nbs/01_data.ipynb #2c3aaae7
 def build_dist(returns):
     """`[C, T]` returns -> `[C, C]` RMS distance between channels. The
     zero-lag-specific fast path; see `corr_to_dist` for the generic version.
@@ -278,7 +278,7 @@ def build_dist(returns):
     d2 = var[:, None] + var[None, :] - 2 * cov + (mu[:, None] - mu[None, :]) ** 2
     return torch.sqrt(d2.clamp_(min=0)).to(torch.float32)
 
-# %% ../nbs/01_data.ipynb #64857a68
+# %% ../nbs/01_data.ipynb #fbd5ce81
 def greedy_edge_order(D):
     """Greedy-edge TSP construction (Kruskal-style union-find)."""
     N = D.shape[0]
@@ -320,12 +320,12 @@ def greedy_edge_order(D):
         path.append(nxt); prev, cur = cur, nxt
     return torch.tensor(path, device=D.device)
 
-# %% ../nbs/01_data.ipynb #6538195b
+# %% ../nbs/01_data.ipynb #c7574d7f
 def tour_length(D, order):
     """Total length of an open-path tour -- the quantity 2-opt minimizes."""
     return D[order[:-1], order[1:]].sum().item()
 
-# %% ../nbs/01_data.ipynb #154cbd8b
+# %% ../nbs/01_data.ipynb #43867238
 def two_opt(D, order, max_passes=30, tol=1e-9):
     """Full vectorized 2-opt on an open path, via the standard trick of
     closing it into a cycle through a zero-cost phantom node."""
@@ -357,7 +357,7 @@ def two_opt(D, order, max_passes=30, tol=1e-9):
     order = order[order != N]           # drop the phantom node
     return order
 
-# %% ../nbs/01_data.ipynb #a2191842
+# %% ../nbs/01_data.ipynb #be8a23d3
 def tsp_order(returns, max_passes=30):
     """Greedy-edge construction + 2-opt refinement, targeting `roughness`
     directly rather than correlation. Zero-lag only (uses `build_dist`); for
@@ -367,7 +367,7 @@ def tsp_order(returns, max_passes=30):
     order = two_opt(D, greedy_edge_order(D), max_passes=max_passes)
     return order, D
 
-# %% ../nbs/01_data.ipynb #ff826987
+# %% ../nbs/01_data.ipynb #fee83ca5
 def hrp_order(D):
     """HRP-style quasi-diagonalization: the leaf order of a single-linkage
     dendrogram. Same `(D)` signature as `greedy_edge_order`."""
@@ -414,19 +414,19 @@ def hrp_order(D):
             stack.append(l)
     return torch.tensor(order, device=D.device)
 
-# %% ../nbs/01_data.ipynb #192b8da4
+# %% ../nbs/01_data.ipynb #451660ea
 def roughness(X, order=None):
     """Mean total variation between adjacent channels. Lower = smoother."""
     Y = X if order is None else X[order]
     return (Y[1:] - Y[:-1]).abs().mean().item()
 
-# %% ../nbs/01_data.ipynb #f81e5604
+# %% ../nbs/01_data.ipynb #dee7a03a
 def roughness_profile(X, order, n_blocks=10):
     """Per-position roughness -- reveals non-uniformity that the mean hides."""
     d = (X[order][1:] - X[order][:-1]).abs().mean(dim=1)
     return [b.mean().item() for b in torch.tensor_split(d, n_blocks)]
 
-# %% ../nbs/01_data.ipynb #250426ef
+# %% ../nbs/01_data.ipynb #efe02575
 def chain_trace(C, order, tickers, n=8):
     """Print the pairs the chain actually maximized, hop by hop."""
     o = order.tolist()
@@ -434,7 +434,7 @@ def chain_trace(C, order, tickers, n=8):
         print(f"ch {k:2d} -> {k+1:2d}: {C[o[k], o[k+1]]:.3f}   "
               f"{tickers[o[k]]} -> {tickers[o[k+1]]}")
 
-# %% ../nbs/01_data.ipynb #c165d3a1
+# %% ../nbs/01_data.ipynb #7ddc3f9e
 def corr_stats(C, orders):
     """`orders`: dict of name -> order tensor."""
     off = C.clone().fill_diagonal_(0)
@@ -446,18 +446,18 @@ def corr_stats(C, orders):
         print(f"{name:9s} adjacent corr -- mean {adj.mean():.3f}, "
               f"first10 {adj[:10].mean():.3f}, last10 {adj[-10:].mean():.3f}")
 
-# %% ../nbs/01_data.ipynb #b71a0144
+# %% ../nbs/01_data.ipynb #baae2866
 def standardize(X, eps=1e-8):
     """Zero mean, unit variance per channel (along time)."""
     return (X - X.mean(dim=1, keepdim=True)) / (X.std(dim=1, keepdim=True) + eps)
 
-# %% ../nbs/01_data.ipynb #05baff29
+# %% ../nbs/01_data.ipynb #2a4b2b27
 def log_prices(prices):
     """Standardized log-prices. `clamp_min` guards against a stray zero or
     negative price, which would give -inf and NaN out the whole channel."""
     return standardize(torch.log(prices.clamp_min(0.01)))
 
-# %% ../nbs/01_data.ipynb #a73a60e1
+# %% ../nbs/01_data.ipynb #bcc8c1e0
 def _two_panel(x, y, Z, title, xlabel, ylabel, zlabel, cmap="viridis"):
     """Heatmap (top-down) + 3D surface, side by side. Rasterized: fixed
     small output size regardless of grid size, at the cost of no live
@@ -485,7 +485,7 @@ def _two_panel(x, y, Z, title, xlabel, ylabel, zlabel, cmap="viridis"):
                       # this return value, once via the inline auto-hook)
     return fig
 
-# %% ../nbs/01_data.ipynb #a04df9a7
+# %% ../nbs/01_data.ipynb #da6ccd6f
 def show(X, title, n_ch=None, t_stride=5, clip=3.0, cmap="viridis"):
     """Two static views over ALL channels by default (`n_ch=None`); x is in
     real days. `t_stride` controls point density on the day axis."""
@@ -495,7 +495,7 @@ def show(X, title, n_ch=None, t_stride=5, clip=3.0, cmap="viridis"):
     y = np.arange(Z.shape[0])
     return _two_panel(x, y, Z, title, "day", "channel", "value", cmap=cmap)
 
-# %% ../nbs/01_data.ipynb #43a9698e
+# %% ../nbs/01_data.ipynb #98fc89b5
 def show_corr(C, order, title, n=None, cmap="viridis"):
     """Correlation matrix permuted by `order` -- banded means it worked.
     ALL channels by default (`n=None`). Diagonal (self-correlation, always
@@ -509,7 +509,7 @@ def show_corr(C, order, title, n=None, cmap="viridis"):
     idx = np.arange(len(o))
     return _two_panel(idx, idx, Z, title, "channel", "channel", "corr", cmap=cmap)
 
-# %% ../nbs/01_data.ipynb #bc0c3b56
+# %% ../nbs/01_data.ipynb #722aeebd
 def show_score_profile(C, orders, title="pairing score by position", sort_desc=False):
     """Stacked subplots, one row per ordering, of `C[o[:-1], o[1:]]` (score
     vs. immediate predecessor). Default: plotted in positional order (as
@@ -539,7 +539,28 @@ def show_score_profile(C, orders, title="pairing score by position", sort_desc=F
     plt.close(fig)
     return fig
 
-# %% ../nbs/01_data.ipynb #d0dc81bb
+# %% ../nbs/01_data.ipynb #67a1efc3
+def rgb_image(X, orders, clip=3.0):
+    """`[C, T]` data + 3 orderings -> `[C, T, 3]` float array in [0, 1].
+    Each ordering becomes one colour channel."""
+    assert len(orders) == 3, f"need exactly 3 orderings for RGB, got {len(orders)}"
+    img = torch.stack([X[o].clamp(-clip, clip) for o in orders], dim=-1)
+    return ((img + clip) / (2 * clip)).cpu().numpy()
+
+
+def show_rgb(X, orders, title, clip=3.0, figsize=(13, 7), labels=("R", "G", "B")):
+    """Render three orderings of the same data as one RGB image."""
+    import matplotlib.pyplot as plt
+    img = rgb_image(X, orders, clip=clip)
+    fig, ax = plt.subplots(figsize=figsize)
+    ax.imshow(img, aspect="auto", interpolation="nearest")
+    ax.set_xlabel("day"); ax.set_ylabel("position index")
+    ax.set_title(f"{title}\n{labels[0]}=red  {labels[1]}=green  {labels[2]}=blue")
+    plt.tight_layout()
+    plt.close(fig)
+    return fig
+
+# %% ../nbs/01_data.ipynb #108f4a03
 ALGOS = {
     "greedy":   lambda C, D: greedy_order(C, start=0),
     "spectral": lambda C, D: spectral_order(C, anchor=0),
@@ -548,7 +569,7 @@ ALGOS = {
 }
 PAIRINGS = ["corr", "xcorr"]
 
-# %% ../nbs/01_data.ipynb #2387857f
+# %% ../nbs/01_data.ipynb #8f6c2ca7
 def sample_fit_eval(T, min_len, max_len, rng, min_eval=60):
     """Pick a random contiguous fit window, plus a DISJOINT eval window taken
     from whatever timeline remains on either side. Returns
@@ -564,7 +585,7 @@ def sample_fit_eval(T, min_len, max_len, rng, min_eval=60):
     es = int(rng.integers(lo, hi - Le + 1))
     return fit, (es, es + Le)
 
-# %% ../nbs/01_data.ipynb #65794ba6
+# %% ../nbs/01_data.ipynb #af8a9504
 def run_trial(returns, rng, min_len=120, max_len=None, xcorr_max_lag=20, min_var=1e-12):
     """One trial: crop a fit window, build all 6 (pairing, algo) orderings on
     it, and score each by roughness both in-sample and on a disjoint window.
@@ -593,7 +614,7 @@ def run_trial(returns, rng, min_len=120, max_len=None, xcorr_max_lag=20, min_var
                     "n_channels": int(keep.sum())}
     return out
 
-# %% ../nbs/01_data.ipynb #56c0c906
+# %% ../nbs/01_data.ipynb #fc8633c2
 def run_benchmark(returns, n_trials=20, results=None, seed=None, min_len=120,
                    max_len=None, xcorr_max_lag=20, progress=True):
     """Run `n_trials` independent trials, appending to `results` so the
@@ -607,7 +628,7 @@ def run_benchmark(returns, n_trials=20, results=None, seed=None, min_len=120,
                                   xcorr_max_lag=xcorr_max_lag))
     return results
 
-# %% ../nbs/01_data.ipynb #432fa526
+# %% ../nbs/01_data.ipynb #26256e1a
 def summarize_benchmark(results, metric="held_out", verbose=True):
     """Weighted-mean roughness (weight = fit-window length) and win rate per
     combo, ranked best-first. Returns a list of dicts."""
