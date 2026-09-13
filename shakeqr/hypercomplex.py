@@ -9,7 +9,7 @@ Docs: https://drscotthawley.github.io/shakeqr/hypercomplex.html.md"""
 __all__ = ['GRASSUCCI_LICENSE', 'ph_weight', 'hamilton_basis', 'PHMLinear', 'PHConv1d', 'count_params', 'ConvAE1d', 'make_ae',
            'ph_algebras', 'views_to_batch', 'fit_ae', 'algebra_stats', 'show_algebra']
 
-# %% ../nbs/03_hypercomplex.ipynb #695e88d3
+# %% ../nbs/03_hypercomplex.ipynb #7e900c10
 # The PH layers in this module are a re-implementation following
 # E. Grassucci et al., "HyperNets: Hypercomplex Neural Networks with PyTorch",
 # https://github.com/eleGAN23/HyperNets -- released under the MIT License:
@@ -44,7 +44,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-# %% ../nbs/03_hypercomplex.ipynb #aeb3f1e7
+# %% ../nbs/03_hypercomplex.ipynb #cdfd424b
 def ph_weight(A, S):
     """`A: [n, n, n]`, `S: [n, out/n, in/n, *kernel]` -> `W: [out, in, *kernel]`
     with `W = sum_i kron(A[i], S[i])` (kernel dims ride along)."""
@@ -63,7 +63,7 @@ def hamilton_basis():
         [[0, 0, 0, -1], [0, 0, -1, 0], [0, 1, 0, 0], [1, 0, 0, 0]],
     ], dtype=torch.float32)
 
-# %% ../nbs/03_hypercomplex.ipynb #00d5faca
+# %% ../nbs/03_hypercomplex.ipynb #80b76102
 class PHMLinear(nn.Module):
     """Parameterized hypercomplex linear layer: `W = sum_i kron(A_i, S_i)`."""
     def __init__(self, n, in_features, out_features, bias=True):
@@ -128,7 +128,7 @@ class PHConv1d(nn.Module):
 def count_params(m):
     return sum(p.numel() for p in m.parameters() if p.requires_grad)
 
-# %% ../nbs/03_hypercomplex.ipynb #90742e13
+# %% ../nbs/03_hypercomplex.ipynb #4a27aa1e
 class ConvAE1d(nn.Module):
     """Strided conv encoder / upsampling decoder along the last axis.
     `conv(in, out, k, **kw)` is the layer factory, so PH and real versions
@@ -170,7 +170,7 @@ def ph_algebras(model):
     """All learned `A` tensors in a model, in module order: `[n_layers, n, n, n]`."""
     return torch.stack([m.A.detach() for m in model.modules() if isinstance(m, (PHConv1d, PHMLinear))])
 
-# %% ../nbs/03_hypercomplex.ipynb #4cada419
+# %% ../nbs/03_hypercomplex.ipynb #17427e1d
 def views_to_batch(V):
     """`[n, C, T]` -> `[T, n, C]`; `[n, C, P, T]` -> `[T, n*P, C]` (view-major
     features). Days become the batch axis, channel position the conv axis."""
@@ -210,7 +210,7 @@ def fit_ae(model, X, epochs=30, lr=2e-3, batch_size=64, val_frac=0.2, weight_dec
             print(f"epoch {ep:3d}  train {tot / cnt:.4f}  val {val:.4f}")
     return hist
 
-# %% ../nbs/03_hypercomplex.ipynb #df7fe0cc
+# %% ../nbs/03_hypercomplex.ipynb #2f908e73
 def algebra_stats(A):
     """`A: [n, n, n]` -> dict of asymmetry per component and the normalized
     Gram matrix between components."""
