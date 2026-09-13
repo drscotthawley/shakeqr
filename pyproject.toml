@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "shakeqr"
 dynamic = ["version"]
-description = ""
+description = "Reorder massively multichannel time series for cross-channel continuity, then learn on the result"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "Apache-2.0"}
