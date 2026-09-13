@@ -15,6 +15,7 @@ __all__ = ['DATA_DIR', 'DEVICE', 'ALGOS', 'PAIRINGS', 'get_device', 'get_nyse_da
 import datetime as dt
 import io
 import os
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -27,17 +28,30 @@ DATA_DIR = "~/github/shakeqr"
 
 # %% ../nbs/01_data.ipynb #1e44bb67
 def get_device(prefer=None):
-    """cuda -> mps (Apple Silicon) -> cpu, unless `prefer` overrides."""
+    """cuda -> mps (Apple Silicon) -> cpu, unless `prefer` overrides.
+
+    On MPS, warns if `PYTORCH_ENABLE_MPS_FALLBACK=1` is set in the
+    environment: with it, any op MPS doesn't support **silently** runs on CPU
+    (with a device round-trip on every call) instead of raising, so "it ran on
+    MPS" stops being evidence of anything. Every function in this package has
+    been checked to run with the fallback *disabled*; if you see this warning
+    and a slow step, that's the first thing to rule out."""
     if prefer is not None:
-        return torch.device(prefer)
-    if torch.cuda.is_available():
-        return torch.device("cuda")
-    if torch.backends.mps.is_available():
-        return torch.device("mps")
-    return torch.device("cpu")
+        dev = torch.device(prefer)
+    elif torch.cuda.is_available():
+        dev = torch.device("cuda")
+    elif torch.backends.mps.is_available():
+        dev = torch.device("mps")
+    else:
+        dev = torch.device("cpu")
+    if dev.type == "mps" and os.environ.get("PYTORCH_ENABLE_MPS_FALLBACK") == "1":
+        warnings.warn("PYTORCH_ENABLE_MPS_FALLBACK=1 is set: unsupported ops will fall back "
+                      "to CPU silently. Unset it to make MPS failures loud.", stacklevel=2)
+    return dev
 
 
 DEVICE = get_device()
+
 
 # %% ../nbs/01_data.ipynb #a27b2b8d
 def _fetch_nyse_tickers():
