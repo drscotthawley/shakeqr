@@ -8,13 +8,13 @@ Docs: https://drscotthawley.github.io/shakeqr/scattering.html.md"""
 __all__ = ['morlet_hat', 'gauss_hat', 'morlet_params', 'morlet_bank', 'get_bank', 'wavelet_transform', 'scattering_paths',
            'scattering', 'scattering_features', 'scattering_corr', 'show_scattergram', 'stack_views']
 
-# %% ../nbs/02_scattering.ipynb #3cfed920
+# %% ../nbs/02_scattering.ipynb #2a23c9ff
 import math
 
 import numpy as np
 import torch
 
-# %% ../nbs/02_scattering.ipynb #e59170ed
+# %% ../nbs/02_scattering.ipynb #05d3688d
 def _gauss_hat(freqs, sigma):
     return torch.exp(-freqs ** 2 / (2 * sigma ** 2))
 
@@ -49,7 +49,7 @@ def gauss_hat(N, sigma, eps=1e-7):
     freqs = torch.arange((1 - P) * N, P * N, dtype=torch.float64) / N
     return _l1_normalize(_periodize(_gauss_hat(freqs, sigma), 2 * P - 1))
 
-# %% ../nbs/02_scattering.ipynb #6e79d7ec
+# %% ../nbs/02_scattering.ipynb #5cfe1e43
 def morlet_params(J, Q=1, high_freq=0.425, r=math.sqrt(0.5)):
     """Centre frequencies `xi` and bandwidths `sigma` for `J*Q` Morlet
     wavelets, `Q` per octave, from `high_freq` down. Adjacent filters cross
@@ -69,7 +69,7 @@ def morlet_bank(N, J, Q=1, high_freq=0.425, device=None):
     phi = gauss_hat(N, float(sigma[-1]))
     return torch.cat([psi, phi[None]]).to(torch.complex64).to(device)
 
-# %% ../nbs/02_scattering.ipynb #d06a1415
+# %% ../nbs/02_scattering.ipynb #c7a666ee
 _BANK_CACHE = {}
 
 
@@ -93,7 +93,7 @@ def wavelet_transform(X, bank, rpad=True):
     Y = torch.fft.ifft(Xh.unsqueeze(-2) * bank)
     return Y[..., :T]
 
-# %% ../nbs/02_scattering.ipynb #61de700d
+# %% ../nbs/02_scattering.ipynb #42dace9c
 def scattering_paths(J, Q=1, order=2):
     """Path tuples in the order `scattering` stacks them."""
     JQ = J * Q
@@ -136,20 +136,31 @@ def scattering_features(X, J, Q=1, order=2, log=True, eps=1e-6, **kw):
     F = S.mean(-1)
     return (torch.log(F.clamp_min(eps)) if log else F), paths
 
-# %% ../nbs/02_scattering.ipynb #8e256ab2
-def scattering_corr(X, J, Q=1, order=2, use_abs=True, **kw):
+# %% ../nbs/02_scattering.ipynb #47a4ff59
+def scattering_corr(X, J, Q=1, order=2, use_abs=True, eps=1e-8, **kw):
     """`[C, T]` -> `[C, C]` correlation between channels' log-scattering
-    descriptors. Drop-in for `build_corr` / `build_xcorr`."""
+    descriptors. Drop-in for `build_corr` / `build_xcorr`.
+
+    Each path is standardized **across channels** first. Without that, every
+    channel's descriptor shares the same dominant shape (energy falls off with
+    scale for essentially any series), and `corrcoef` between channels mostly
+    measures that common profile -- on the NYSE it came out at mean |corr|
+    0.99, near rank-1, i.e. useless for ordering. Removing the cross-channel
+    mean per path leaves what actually differs between channels."""
     F, _ = scattering_features(X, J, Q, order, log=True, **kw)
+    F = (F - F.mean(0, keepdim=True)) / (F.std(0, keepdim=True) + eps)
     C = torch.nan_to_num(torch.corrcoef(F), nan=0.0)
     return C.abs() if use_abs else C
 
-# %% ../nbs/02_scattering.ipynb #0717f04f
+# %% ../nbs/02_scattering.ipynb #6ef9132f
 def show_scattergram(S, paths, title, log=True, eps=1e-6, cmap="viridis", figsize=(12, 4)):
-    """One channel's scattering coefficients as an image: `S` is `[n_paths, T]`."""
+    """One channel's scattering coefficients as an image: `S` is `[n_paths, T]`.
+    `log=True` plots `log|S|` -- the modulus matters because `S0` (the
+    low-passed signal itself) is signed, and a log of its negative stretches
+    would just paint them at the floor."""
     import matplotlib.pyplot as plt
     Z = S.detach().cpu()
-    Z = torch.log(Z.clamp_min(eps)) if log else Z
+    Z = torch.log(Z.abs().clamp_min(eps)) if log else Z
     fig, ax = plt.subplots(figsize=figsize)
     im = ax.imshow(Z.numpy(), aspect="auto", cmap=cmap, interpolation="nearest")
     ax.set_yticks(range(len(paths)))
@@ -161,7 +172,7 @@ def show_scattergram(S, paths, title, log=True, eps=1e-6, cmap="viridis", figsiz
     plt.close(fig)
     return fig
 
-# %% ../nbs/02_scattering.ipynb #11be692c
+# %% ../nbs/02_scattering.ipynb #bd46cc24
 def stack_views(X, orders):
     """`[C, ...]` data + `n` orderings -> `[n, C, ...]`: the same array under
     each ordering, views stacked as the leading axis."""
